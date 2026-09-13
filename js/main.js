@@ -2,26 +2,35 @@
   // =========================================================================
   // CONFIG
   // =========================================================================
-  var interiorSize = 4;                 // hallway grid is interiorSize x interiorSize
+  var interiorSize = 5;                 // hallway grid is interiorSize x interiorSize
   var gridSize = interiorSize + 2;      // + one ring of classroom slots around it
-  var cellSize = 6.5;
+  var cellSize = 8;
   var wallThick = 0.4;
-  var wallH = 4.4;
+  var wallH = 4.6;
   var mazeExtent = gridSize*cellSize;
   var playerRadius = 0.35;
   var catchRadius = 0.95;
-  var interactRadius = 2.7;
-  var roomSlotCount = 7;                // classrooms carved out of the perimeter ring
+  var interactRadius = 2.9;
+  var roomSlotCount = 9;                // classrooms carved out of the perimeter ring
   var booksCount = 5;                   // must be < roomSlotCount (1 slot becomes the exit)
   var keysNeeded = 3;
-  var camDist = 4.4;
+  var camDist = 5.6;
 
-  var walkSpeed = 4.6;
+  var walkSpeed = 5.2;
   var sprintMultiplier = 1.7;
   var staminaMax = 100;
   var staminaDrainPerSec = 30;
   var staminaRegenPerSec = 16;
   var staminaResumeThreshold = 25;
+
+  // baldi behaviour: wanders randomly until it notices the player, then hunts;
+  // if the player gets far enough away again it gives up and resumes wandering.
+  var baldiPatrolSpeed = 2.2;
+  var baldiChaseSpeedBase = 3.8;
+  var baldiChaseSpeedStep = 0.55;        // permanent chase-speed penalty per wrong answer
+  var baldiChaseSpeedCap = 7.2;
+  var baldiDetectRadius = 9.5;           // must also have line of sight to notice the player
+  var baldiLoseRadius = 14;              // must exceed this before baldi gives up the chase
 
   // Paths for optional real assets. Drop matching .glb files here and they will
   // automatically replace the placeholder shapes below - no other code changes needed.
@@ -66,7 +75,7 @@
 
   var scene = new THREE.Scene();
   var bg = 0x14100a;
-  scene.fog = new THREE.Fog(bg, 4, 23);
+  scene.fog = new THREE.Fog(bg, 5, 28);
   scene.background = new THREE.Color(bg);
 
   var camera = new THREE.PerspectiveCamera(62, w/h, 0.1, 100);
@@ -519,7 +528,7 @@
   }
   var orbitYaw = Math.PI, orbitPitch = 0.38;
   var lookId=null,lastX=0,lastY=0;
-  var lookSens = 0.008;
+  var lookSens = 0.0105;
   var tapId=null, tapStartX=0, tapStartY=0, tapStartT=0, tapDragged=false;
 
   container.addEventListener('pointerdown', function(e){
@@ -690,8 +699,8 @@
       if(keyCount>=keysNeeded && doorLocked){ unlockDoor(); showToast('열쇠를 모두 모았습니다! 탈출문이 열렸습니다'); }
     } else {
       beep(160,0.25,'sawtooth');
-      baldiSpeed = Math.min(baldiSpeedCap, baldiSpeed + baldiSpeedStep);
-      showToast('틀렸습니다! 선생님이 빨라졌습니다');
+      chaseSpeedPenalty = Math.min(baldiChaseSpeedCap-baldiChaseSpeedBase, chaseSpeedPenalty + baldiChaseSpeedStep);
+      showToast('틀렸습니다! 선생님이 쫓아올 때 더 빨라집니다');
     }
     activeBook = null;
   }
@@ -699,39 +708,96 @@
   // =========================================================================
   // baldi AI
   // =========================================================================
-  var baldiSpeed = 2.3;
-  var baldiSpeedStep = 0.55;
-  var baldiSpeedCap = 6.4;
-  var repathTimer = 0;
-  var REPATH_INTERVAL = 0.35;
-  var baldiPath = [];
-  var baldiWaypointIdx = 1;
+  var baldiState = 'patrol'; // 'patrol' | 'chase'
+  var chaseSpeedPenalty = 0; // accumulated permanently from wrong answers
+  var chaseRepathTimer = 0;
+  var CHASE_REPATH_INTERVAL = 0.35;
+  var chasePath = [];
+  var chaseWaypointIdx = 1;
+  var patrolPath = [];
+  var patrolWaypointIdx = 1;
   var baldiVel = {x:0,z:0};
+  var losRay = new THREE.Raycaster();
 
-  function updateBaldiPath(){
+  function hasLineOfSight(ax,az,bx,bz){
+    var dx=bx-ax, dz=bz-az, dist=Math.hypot(dx,dz);
+    if(dist<0.001) return true;
+    losRay.set(new THREE.Vector3(ax,1.4,az), new THREE.Vector3(dx/dist,0,dz/dist));
+    losRay.far = dist;
+    return losRay.intersectObjects(wallMeshes, false).length===0;
+  }
+
+  function pickRandomPatrolCell(){
+    var pool = [];
+    for(var r=interiorMin;r<=interiorMax;r++){
+      for(var c=interiorMin;c<=interiorMax;c++){ pool.push(cells[r][c]); }
+    }
+    if(Math.random()<0.3) pool = pool.concat(roomCells);
+    return pool[Math.floor(Math.random()*pool.length)];
+  }
+
+  function updatePatrolPath(){
+    var bc = worldToCell(baldi.position.x, baldi.position.z);
+    var target = pickRandomPatrolCell();
+    var path = bfsPath(bc.r, bc.c, target.r, target.c);
+    patrolPath = path.map(function(cell){ return cellCenter(cell.r, cell.c); });
+    patrolWaypointIdx = 1;
+  }
+
+  function updateChasePath(){
     var bc = worldToCell(baldi.position.x, baldi.position.z);
     var pc = worldToCell(player.position.x, player.position.z);
     var path = bfsPath(bc.r, bc.c, pc.r, pc.c);
-    baldiPath = path.map(function(cell){ return cellCenter(cell.r, cell.c); });
-    baldiWaypointIdx = 1;
+    chasePath = path.map(function(cell){ return cellCenter(cell.r, cell.c); });
+    chaseWaypointIdx = 1;
   }
 
   function updateBaldi(dt){
-    repathTimer -= dt;
-    if(repathTimer<=0){ updateBaldiPath(); repathTimer = REPATH_INTERVAL; }
-    var target;
-    if(baldiPath.length<=1){
-      target = {x:player.position.x, z:player.position.z};
+    var distToPlayer = Math.hypot(baldi.position.x-player.position.x, baldi.position.z-player.position.z);
+
+    if(baldiState==='patrol'){
+      if(distToPlayer<baldiDetectRadius && hasLineOfSight(baldi.position.x,baldi.position.z,player.position.x,player.position.z)){
+        baldiState = 'chase';
+        chasePath = [];
+        chaseRepathTimer = 0;
+        showToast('선생님에게 들켰습니다!');
+        beep(300,0.2,'square');
+      }
     } else {
-      if(baldiWaypointIdx>=baldiPath.length) baldiWaypointIdx = baldiPath.length-1;
-      target = baldiPath[baldiWaypointIdx];
-      var dd = Math.hypot(baldi.position.x-target.x, baldi.position.z-target.z);
-      if(dd<0.35 && baldiWaypointIdx<baldiPath.length-1) baldiWaypointIdx++;
+      if(distToPlayer>baldiLoseRadius){
+        baldiState = 'patrol';
+        patrolPath = [];
+        showToast('선생님을 따돌렸습니다');
+      }
     }
+
+    var target;
+    if(baldiState==='chase'){
+      chaseRepathTimer -= dt;
+      if(chaseRepathTimer<=0){ updateChasePath(); chaseRepathTimer = CHASE_REPATH_INTERVAL; }
+      if(chasePath.length<=1){
+        target = {x:player.position.x, z:player.position.z};
+      } else {
+        if(chaseWaypointIdx>=chasePath.length) chaseWaypointIdx = chasePath.length-1;
+        target = chasePath[chaseWaypointIdx];
+        var dd = Math.hypot(baldi.position.x-target.x, baldi.position.z-target.z);
+        if(dd<0.35 && chaseWaypointIdx<chasePath.length-1) chaseWaypointIdx++;
+      }
+    } else {
+      if(patrolPath.length===0 || patrolWaypointIdx>=patrolPath.length){ updatePatrolPath(); }
+      target = patrolPath[patrolWaypointIdx] || {x:baldi.position.x, z:baldi.position.z};
+      var dd2 = Math.hypot(baldi.position.x-target.x, baldi.position.z-target.z);
+      if(dd2<0.35){
+        if(patrolWaypointIdx<patrolPath.length-1) patrolWaypointIdx++;
+        else { patrolPath = []; }
+      }
+    }
+
+    var speed = baldiState==='chase' ? Math.min(baldiChaseSpeedCap, baldiChaseSpeedBase+chaseSpeedPenalty) : baldiPatrolSpeed;
     var dx = target.x-baldi.position.x, dz = target.z-baldi.position.z;
     var dist = Math.hypot(dx,dz);
     if(dist>0.001){
-      var vx = (dx/dist)*baldiSpeed, vz=(dz/dist)*baldiSpeed;
+      var vx = (dx/dist)*speed, vz=(dz/dist)*speed;
       baldiVel.x += (vx-baldiVel.x)*Math.min(1,8*dt);
       baldiVel.z += (vz-baldiVel.z)*Math.min(1,8*dt);
       baldi.position.x += baldiVel.x*dt;
@@ -739,8 +805,7 @@
       var ang = Math.atan2(baldiVel.x, baldiVel.z);
       baldi.rotation.y = lerpAngle(baldi.rotation.y, ang, 0.15);
     }
-    var catchDist = Math.hypot(baldi.position.x-player.position.x, baldi.position.z-player.position.z);
-    if(catchDist<catchRadius){ triggerGameOver(); }
+    if(distToPlayer<catchRadius){ triggerGameOver(); }
   }
 
   // =========================================================================
@@ -769,10 +834,12 @@
       mmCtx.fillStyle = doorLocked ? '#d04040' : '#40d060';
       mmCtx.fillRect(door.position.x*scale-3, door.position.z*scale-3, 6, 6);
     }
-    mmCtx.fillStyle = '#ff4040';
-    mmCtx.beginPath();
-    mmCtx.arc(baldi.position.x*scale, baldi.position.z*scale, 3, 0, Math.PI*2);
-    mmCtx.fill();
+    if(baldiState==='chase'){
+      mmCtx.fillStyle = '#ff4040';
+      mmCtx.beginPath();
+      mmCtx.arc(baldi.position.x*scale, baldi.position.z*scale, 3, 0, Math.PI*2);
+      mmCtx.fill();
+    }
     mmCtx.save();
     mmCtx.translate(player.position.x*scale, player.position.z*scale);
     mmCtx.rotate(player.rotation.y);
@@ -857,9 +924,11 @@
     var bPos = cellCenter(baldiStartCell.r, baldiStartCell.c);
     baldi.position.set(bPos.x, 0, bPos.z);
     baldiVel = {x:0,z:0};
-    baldiSpeed = 2.3;
-    baldiPath = [];
-    repathTimer = 0;
+    baldiState = 'patrol';
+    chaseSpeedPenalty = 0;
+    chasePath = [];
+    patrolPath = [];
+    chaseRepathTimer = 0;
 
     keyCount = 0;
     document.getElementById('keyCount').textContent = 0;
@@ -935,7 +1004,7 @@
           targetVX = (forward.x*fAmt + right.x*sAmt)*maxSpeed;
           targetVZ = (forward.z*fAmt + right.z*sAmt)*maxSpeed;
         }
-        var accel = 10;
+        var accel = 13;
         curVel.x += (targetVX-curVel.x)*Math.min(1,accel*dt);
         curVel.z += (targetVZ-curVel.z)*Math.min(1,accel*dt);
 
@@ -947,7 +1016,7 @@
         var speedMag = Math.sqrt(curVel.x*curVel.x+curVel.z*curVel.z);
         if(speedMag>0.3){
           var targetAngle = Math.atan2(-curVel.x, -curVel.z);
-          player.rotation.y = lerpAngle(player.rotation.y, targetAngle, 0.18);
+          player.rotation.y = lerpAngle(player.rotation.y, targetAngle, 0.26);
           var bobSpeed = wantsSprint ? 16 : 10;
           body.position.y = 0.7 + Math.sin(clock.elapsedTime*bobSpeed)*0.03;
         }
