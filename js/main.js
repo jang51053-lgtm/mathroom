@@ -41,8 +41,8 @@
   };
   // Tweak per-model if a dropped-in asset needs a different scale/facing than the placeholder.
   var ASSET_TUNING = {
-    player: { scale: 0.6, rotationY: 0, yOffset: 0 },
-    baldi: { scale: 0.41, rotationY: 0, yOffset: 0 },
+    player: { scale: 0.6, rotationY: Math.PI, yOffset: 0 },
+    baldi: { scale: 0.41, rotationY: Math.PI, yOffset: 0 },
     book: { scale: 1, rotationY: 0, yOffset: 0 }
   };
 
@@ -88,7 +88,19 @@
 
   // ---------- optional GLTF asset loading (falls back to placeholders) ----------
   var gltfLoader = (window.THREE && THREE.GLTFLoader) ? new THREE.GLTFLoader() : null;
-  function tryAttachModel(targetGroup, url, tuning){
+
+  function pickClip(animations, patterns){
+    for(var p=0;p<patterns.length;p++){
+      for(var i=0;i<animations.length;i++){
+        if(patterns[p].test(animations[i].name)) return animations[i];
+      }
+    }
+    return null;
+  }
+
+  // animOut (optional): a plain object this fills in once the model (and any
+  // walk/idle animation clips it carries) finishes loading - see setWalking().
+  function tryAttachModel(targetGroup, url, tuning, animOut){
     if(!gltfLoader) return;
     tuning = tuning||{};
     gltfLoader.load(url, function(gltf){
@@ -99,10 +111,38 @@
       if(tuning.yOffset) model.position.y = tuning.yOffset;
       while(targetGroup.children.length){ targetGroup.remove(targetGroup.children[0]); }
       targetGroup.add(model);
+      var anims = gltf.animations||[];
+      if(animOut && anims.length){
+        var mixer = new THREE.AnimationMixer(model);
+        var walkClip = pickClip(anims, [/^walk$/i, /walk/i, /run/i]) || anims[0];
+        var idleClip = pickClip(anims, [/^idle$/i, /idle/i]);
+        var walkAction = mixer.clipAction(walkClip);
+        walkAction.play();
+        var idleAction = idleClip ? mixer.clipAction(idleClip) : null;
+        if(idleAction){
+          idleAction.play();
+          walkAction.setEffectiveWeight(0);
+          idleAction.setEffectiveWeight(1);
+        }
+        animOut.mixer = mixer;
+        animOut.walkAction = walkAction;
+        animOut.idleAction = idleAction;
+        animOut.walking = false;
+      }
     }, undefined, function(){
       // asset not present yet - keep using the placeholder mesh, this is expected
       // until real art is dropped into assets/models/.
     });
+  }
+
+  // Switches between the idle and walk clips loaded above; a no-op until both
+  // clips exist (single-clip models just loop their one animation forever).
+  function setWalking(animOut, walking){
+    if(!animOut || !animOut.mixer || !animOut.idleAction) return;
+    if(animOut.walking===walking) return;
+    animOut.walking = walking;
+    animOut.walkAction.setEffectiveWeight(walking ? 1 : 0);
+    animOut.idleAction.setEffectiveWeight(walking ? 0 : 1);
   }
 
   function makeTexture(base, grain, w1, h1, vertical){
@@ -474,7 +514,8 @@
   var playerLight = new THREE.PointLight(0xfff2c0, 0.55, 8);
   playerLight.position.set(0,2,0);
   player.add(playerLight);
-  tryAttachModel(player, ASSET_PATHS.player, ASSET_TUNING.player);
+  var playerAnim = {};
+  tryAttachModel(player, ASSET_PATHS.player, ASSET_TUNING.player, playerAnim);
 
   // ---------- baldi (teacher) ----------
   var baldi = new THREE.Group();
@@ -496,7 +537,8 @@
   baldi.add(ruler);
   var bShadow = shadow.clone(); baldi.add(bShadow);
   scene.add(baldi);
-  tryAttachModel(baldi, ASSET_PATHS.baldi, ASSET_TUNING.baldi);
+  var baldiAnim = {};
+  tryAttachModel(baldi, ASSET_PATHS.baldi, ASSET_TUNING.baldi, baldiAnim);
 
   // ---------- collision ----------
   var margin = playerRadius;
@@ -807,9 +849,10 @@
       baldiVel.z += (vz-baldiVel.z)*Math.min(1,8*dt);
       baldi.position.x += baldiVel.x*dt;
       baldi.position.z += baldiVel.z*dt;
-      var ang = Math.atan2(baldiVel.x, baldiVel.z);
+      var ang = Math.atan2(-baldiVel.x, -baldiVel.z);
       baldi.rotation.y = lerpAngle(baldi.rotation.y, ang, 0.15);
     }
+    setWalking(baldiAnim, Math.hypot(baldiVel.x,baldiVel.z)>0.25);
     if(distToPlayer<catchRadius){ triggerGameOver(); }
   }
 
@@ -859,7 +902,8 @@
   // camera collision
   // =========================================================================
   var camRay = new THREE.Raycaster();
-  function computeCameraPos(){
+  var camSmoothDist = camDist;
+  function computeCameraPos(dt){
     var desiredX = player.position.x + camDist*Math.sin(orbitYaw)*Math.cos(orbitPitch);
     var desiredY = player.position.y + 1.3 + camDist*Math.sin(orbitPitch);
     var desiredZ = player.position.z + camDist*Math.cos(orbitYaw)*Math.cos(orbitPitch);
@@ -876,12 +920,16 @@
     var ceilingLimit = wallH - 0.35;
     if(camY>ceilingLimit && dirVec.y>0){
       finalDist = Math.min(finalDist, (ceilingLimit-origin.y)/dirVec.y);
-      camY = origin.y + dirVec.y*finalDist;
     }
+    // pull in instantly to dodge a wall, but ease back out - avoids
+    // camera snapping/jittering at corners and doorway edges
+    if(finalDist<camSmoothDist) camSmoothDist = finalDist;
+    else camSmoothDist += (finalDist-camSmoothDist)*Math.min(1,(dt||0.016)*10);
+    var useDist = camSmoothDist;
     return {
-      x: origin.x + dirVec.x*finalDist,
-      y: camY,
-      z: origin.z + dirVec.z*finalDist
+      x: origin.x + dirVec.x*useDist,
+      y: origin.y + dirVec.y*useDist,
+      z: origin.z + dirVec.z*useDist
     };
   }
 
@@ -944,6 +992,7 @@
     keyCount = 0;
     document.getElementById('keyCount').textContent = 0;
     orbitYaw = Math.PI; orbitPitch = 0.38;
+    camSmoothDist = camDist;
   }
 
   function triggerGameOver(){
@@ -1031,6 +1080,8 @@
           var bobSpeed = wantsSprint ? 16 : 10;
           body.position.y = 0.7 + Math.sin(clock.elapsedTime*bobSpeed)*0.03;
         }
+        setWalking(playerAnim, speedMag>0.3);
+        if(playerAnim.mixer) playerAnim.mixer.timeScale = wantsSprint ? 1.6 : 1;
 
         doorToastCooldown -= dt;
         if(door){
@@ -1043,8 +1094,10 @@
       }
 
       updateBaldi(dt);
+      if(playerAnim.mixer) playerAnim.mixer.update(dt);
+      if(baldiAnim.mixer) baldiAnim.mixer.update(dt);
 
-      var camPos = computeCameraPos();
+      var camPos = computeCameraPos(dt);
       camera.position.set(camPos.x, camPos.y, camPos.z);
       camera.lookAt(player.position.x, player.position.y+1.2, player.position.z);
 
