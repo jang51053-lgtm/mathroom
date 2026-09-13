@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>노란 백룸 수학 탈출</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div id="container">
+  <div id="hint">왼쪽 조이스틱 이동 · 화면 드래그 시점회전 · 오른쪽 버튼 달리기 · 책 탭하여 문제풀이</div>
+  <div id="sceneWrap">
+    <div id="threeContainer"></div>
+    <canvas id="minimap" width="110" height="110"></canvas>
+    <div id="keyHud">🔑 <span id="keyCount">0</span>/<span id="keyNeed">3</span></div>
+    <div id="toast"></div>
+    <div id="joystick"><div id="stick"></div></div>
+    <div id="staminaWrap"><div id="staminaFill"></div></div>
+    <div id="runBtn">달리기</div>
+
+    <div id="startScreen" class="overlay">
+      <h1>노란 백룸 수학 탈출</h1>
+      <p>
+        학교 복도를 따라 이어진 <b>교실</b>에 들어가 책을 탭해 수학 문제를 풀면 <b>열쇠</b>를 얻습니다.<br/>
+        열쇠를 <b id="startKeyNeed">3</b>개 모아 <b>탈출문</b>에 도달하면 승리!<br/><br/>
+        복도를 <b>선생님</b>이 순찰합니다. 문제를 틀릴 때마다 선생님이 더 빨라지니 조심하세요.<br/>
+        오른쪽 버튼(또는 Shift 키)으로 잠깐 달릴 수 있지만 체력이 필요합니다.<br/>
+        선생님에게 붙잡히면 게임 오버입니다.
+      </p>
+      <button class="btn" id="startBtn">시작하기</button>
+    </div>
+
+    <div id="gameOverScreen" class="overlay" hidden>
+      <h1 style="color:#ff6a5a;">붙잡혔습니다!</h1>
+      <p>선생님에게 잡혀 게임이 종료되었습니다.</p>
+      <button class="btn" id="retryBtn">다시 도전</button>
+    </div>
+
+    <div id="winScreen" class="overlay" hidden>
+      <h1 style="color:#8affa0;">탈출 성공!</h1>
+      <p>모든 열쇠를 모아 무사히 탈출했습니다.</p>
+      <button class="btn" id="againBtn">한 번 더</button>
+    </div>
+
+    <div id="questionModal">
+      <div id="questionCard">
+        <p id="qTitle">수학 문제</p>
+        <p id="qText">?</p>
+        <div id="qChoices"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

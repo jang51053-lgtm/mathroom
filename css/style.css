@@ -1,0 +1,36 @@
+html, body { margin:0; padding:0; background:#14100a; height:100%; font-family: 'Malgun Gothic', sans-serif; }
+#container { max-width:720px; margin:0 auto; padding:10px; }
+#hint { font-size:13px; color:#ddd; margin-bottom:6px; }
+#sceneWrap { position:relative; width:100%; aspect-ratio:4/3; border-radius:8px; overflow:hidden; border:1px solid #444; background:#14100a; }
+#threeContainer { width:100%; height:100%; touch-action:none; }
+
+#joystick { position:absolute; bottom:14px; left:14px; width:84px; height:84px; border-radius:50%; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.4); touch-action:none; }
+#stick { position:absolute; width:34px; height:34px; border-radius:50%; background:rgba(255,255,255,0.65); left:25px; top:25px; }
+
+#runBtn { position:absolute; bottom:20px; right:16px; width:60px; height:60px; border-radius:50%; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.4); touch-action:none; user-select:none; display:flex; align-items:center; justify-content:center; color:#ffe28a; font-size:11px; font-weight:bold; }
+#runBtn.active { background:rgba(255,206,90,0.4); border-color:#ffe28a; }
+#staminaWrap { position:absolute; bottom:84px; right:16px; width:60px; height:7px; background:rgba(0,0,0,0.55); border-radius:4px; overflow:hidden; border:1px solid rgba(255,255,255,0.3); }
+#staminaFill { height:100%; width:100%; background:#ffcf5a; }
+#staminaFill.low { background:#e05a3a; }
+
+#minimap { position:absolute; top:10px; right:10px; width:110px; height:110px; background:rgba(10,8,4,0.65); border:1px solid rgba(255,220,140,0.5); border-radius:6px; }
+#toast { position:absolute; left:50%; top:14px; transform:translateX(-50%); background:rgba(20,15,8,0.85); color:#ffe28a; padding:6px 14px; border-radius:16px; font-size:13px; border:1px solid rgba(255,220,140,0.4); opacity:0; transition:opacity 0.25s; pointer-events:none; white-space:nowrap; }
+#toast.show { opacity:1; }
+
+.overlay { position:absolute; inset:0; background:rgba(10,8,4,0.92); display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:20px; box-sizing:border-box; color:#f0e6c8; }
+.overlay h1 { color:#ffe28a; margin:0 0 12px; font-size:22px; }
+.overlay p { font-size:13px; line-height:1.6; max-width:420px; color:#d8cba0; }
+.btn { margin-top:16px; padding:10px 26px; background:#b0925a; color:#221a0e; border:none; border-radius:6px; font-size:15px; font-weight:bold; cursor:pointer; }
+.btn:active { background:#8a744a; }
+
+#questionModal { position:absolute; inset:0; background:rgba(10,8,4,0.88); display:none; align-items:center; justify-content:center; padding:14px; box-sizing:border-box; }
+#questionCard { background:#e8d8a8; border:4px solid #7a5f2e; border-radius:10px; padding:18px; width:100%; max-width:340px; box-sizing:border-box; box-shadow:0 8px 30px rgba(0,0,0,0.6); }
+#qTitle { color:#5a4520; font-size:12px; font-weight:bold; margin:0 0 8px; letter-spacing:1px; }
+#qText { color:#2a2010; font-size:26px; font-weight:bold; text-align:center; margin:6px 0 16px; }
+#qChoices { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.qBtn { padding:12px 4px; font-size:18px; font-weight:bold; background:#f4e9c8; border:2px solid #8a744a; border-radius:6px; color:#2a2010; cursor:pointer; }
+.qBtn:active { background:#d8c48a; }
+
+#keyHud { position:absolute; top:10px; left:10px; background:rgba(20,15,8,0.7); color:#ffe28a; padding:5px 10px; border-radius:14px; font-size:13px; font-weight:bold; border:1px solid rgba(255,220,140,0.4); }
+
+[hidden] { display:none !important; }
