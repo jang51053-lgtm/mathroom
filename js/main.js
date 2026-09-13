@@ -41,8 +41,8 @@
   };
   // Tweak per-model if a dropped-in asset needs a different scale/facing than the placeholder.
   var ASSET_TUNING = {
-    player: { scale: 1, rotationY: 0, yOffset: 0 },
-    baldi: { scale: 1, rotationY: 0, yOffset: 0 },
+    player: { scale: 0.6, rotationY: 0, yOffset: 0 },
+    baldi: { scale: 0.41, rotationY: 0, yOffset: 0 },
     book: { scale: 1, rotationY: 0, yOffset: 0 }
   };
 
