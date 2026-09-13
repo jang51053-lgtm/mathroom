@@ -727,18 +727,23 @@
     return losRay.intersectObjects(wallMeshes, false).length===0;
   }
 
-  function pickRandomPatrolCell(){
+  function pickRandomPatrolCell(excludeR, excludeC){
     var pool = [];
     for(var r=interiorMin;r<=interiorMax;r++){
-      for(var c=interiorMin;c<=interiorMax;c++){ pool.push(cells[r][c]); }
+      for(var c=interiorMin;c<=interiorMax;c++){
+        if(r===excludeR && c===excludeC) continue;
+        pool.push(cells[r][c]);
+      }
     }
-    if(Math.random()<0.3) pool = pool.concat(roomCells);
+    if(Math.random()<0.3){
+      roomCells.forEach(function(rc){ if(!(rc.r===excludeR && rc.c===excludeC)) pool.push(rc); });
+    }
     return pool[Math.floor(Math.random()*pool.length)];
   }
 
   function updatePatrolPath(){
     var bc = worldToCell(baldi.position.x, baldi.position.z);
-    var target = pickRandomPatrolCell();
+    var target = pickRandomPatrolCell(bc.r, bc.c);
     var path = bfsPath(bc.r, bc.c, target.r, target.c);
     patrolPath = path.map(function(cell){ return cellCenter(cell.r, cell.c); });
     patrolWaypointIdx = 1;
@@ -867,9 +872,15 @@
     var hits = camRay.intersectObjects(wallMeshes, false);
     var finalDist = fullDist;
     if(hits.length){ finalDist = Math.max(0.6, hits[0].distance-0.25); }
+    var camY = origin.y + dirVec.y*finalDist;
+    var ceilingLimit = wallH - 0.35;
+    if(camY>ceilingLimit && dirVec.y>0){
+      finalDist = Math.min(finalDist, (ceilingLimit-origin.y)/dirVec.y);
+      camY = origin.y + dirVec.y*finalDist;
+    }
     return {
       x: origin.x + dirVec.x*finalDist,
-      y: origin.y + dirVec.y*finalDist,
+      y: camY,
       z: origin.z + dirVec.z*finalDist
     };
   }
