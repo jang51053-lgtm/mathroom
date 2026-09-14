@@ -14,7 +14,7 @@
   var roomSlotCount = 9;                // classrooms carved out of the perimeter ring
   var booksCount = 5;                   // must be < roomSlotCount (1 slot becomes the exit)
   var keysNeeded = 3;
-  var camDist = 5.6;
+  var camDist = 4.4;
 
   var walkSpeed = 5.2;
   var sprintMultiplier = 1.7;
@@ -903,6 +903,37 @@
   // =========================================================================
   var camRay = new THREE.Raycaster();
   var camSmoothDist = camDist;
+  var CAM_PROBE_RADIUS = 0.35; // treat the camera as a small sphere, not a point
+  var camUpVec = new THREE.Vector3(0,1,0);
+  var camRightTmp = new THREE.Vector3();
+  var camUpTmp = new THREE.Vector3();
+  var camProbeOrigin = new THREE.Vector3();
+
+  // Casts several parallel rays in a small cross pattern around the direct
+  // line to the desired camera spot (instead of just one) so a corner or
+  // doorway edge can't make a single ray flicker between hit/no-hit from
+  // one frame to the next - that flicker was the source of the camera pops.
+  function cameraCollisionDist(origin, dirVec, fullDist){
+    camRightTmp.crossVectors(dirVec, camUpVec);
+    if(camRightTmp.lengthSq()<0.0001) camRightTmp.set(1,0,0); else camRightTmp.normalize();
+    camUpTmp.crossVectors(camRightTmp, dirVec).normalize();
+
+    var minDist = fullDist;
+    var offsets = [
+      [0,0], [CAM_PROBE_RADIUS,0], [-CAM_PROBE_RADIUS,0], [0,CAM_PROBE_RADIUS], [0,-CAM_PROBE_RADIUS]
+    ];
+    for(var i=0;i<offsets.length;i++){
+      camProbeOrigin.copy(origin)
+        .addScaledVector(camRightTmp, offsets[i][0])
+        .addScaledVector(camUpTmp, offsets[i][1]);
+      camRay.set(camProbeOrigin, dirVec);
+      camRay.far = fullDist;
+      var hits = camRay.intersectObjects(wallMeshes, false);
+      if(hits.length && hits[0].distance<minDist) minDist = hits[0].distance;
+    }
+    return minDist;
+  }
+
   function computeCameraPos(dt){
     var desiredX = player.position.x + camDist*Math.sin(orbitYaw)*Math.cos(orbitPitch);
     var desiredY = player.position.y + 1.3 + camDist*Math.sin(orbitPitch);
@@ -911,20 +942,19 @@
     var dirVec = new THREE.Vector3(desiredX-origin.x, desiredY-origin.y, desiredZ-origin.z);
     var fullDist = dirVec.length();
     dirVec.normalize();
-    camRay.set(origin, dirVec);
-    camRay.far = fullDist;
-    var hits = camRay.intersectObjects(wallMeshes, false);
-    var finalDist = fullDist;
-    if(hits.length){ finalDist = Math.max(0.6, hits[0].distance-0.25); }
+
+    var hitDist = cameraCollisionDist(origin, dirVec, fullDist);
+    var finalDist = Math.max(0.9, hitDist-0.25);
     var camY = origin.y + dirVec.y*finalDist;
     var ceilingLimit = wallH - 0.35;
     if(camY>ceilingLimit && dirVec.y>0){
       finalDist = Math.min(finalDist, (ceilingLimit-origin.y)/dirVec.y);
     }
-    // pull in instantly to dodge a wall, but ease back out - avoids
-    // camera snapping/jittering at corners and doorway edges
-    if(finalDist<camSmoothDist) camSmoothDist = finalDist;
-    else camSmoothDist += (finalDist-camSmoothDist)*Math.min(1,(dt||0.016)*10);
+    // Near a corner the required distance can swing hard (open hallway one
+    // instant, a wall right next to your face the next) as you turn to look
+    // at it - ease both directions fast rather than snapping the distance
+    // instantly, which is what made the camera feel like it was lurching.
+    camSmoothDist += (finalDist-camSmoothDist)*Math.min(1,(dt||0.016)*16);
     var useDist = camSmoothDist;
     return {
       x: origin.x + dirVec.x*useDist,
