@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>백룸 수학 탈출</title>
-<link rel="stylesheet" href="css/style.css?v=7" />
+<link rel="stylesheet" href="css/style.css?v=8" />
 </head>
 <body>
 <div id="container">
@@ -16,6 +16,7 @@
     <div id="vignette"></div>
 
     <div id="keyHud">🔑 <span id="keyCount">0</span>/<span id="keyNeed">3</span></div>
+    <div id="timerHud">0:00</div>
     <div id="zoneLabel"></div>
     <div id="toast"></div>
 
@@ -48,12 +49,18 @@
     <div id="winScreen" class="overlay" hidden>
       <h1 class="good">탈출</h1>
       <p>문 너머로 빠져나왔습니다. 다음 층은 더 깊습니다.</p>
+      <div id="resultCard">
+        <div class="resultRow big"><span>클리어 시간</span><b id="winTime">0:00</b></div>
+        <div class="resultRow"><span>푼 문제</span><b id="winSolved">0 / 0</b></div>
+        <div class="resultRow"><span>틀린 횟수</span><b id="winWrong">0회</b></div>
+        <div class="resultRow"><span>최고 기록</span><b id="winBest">-</b></div>
+      </div>
       <button class="btn" id="againBtn">한 번 더</button>
     </div>
 
     <div id="questionModal">
       <div id="questionCard">
-        <p id="qTitle">수학 문제</p>
+        <p id="qTitle">반올림 문제</p>
         <p id="qText">?</p>
         <div id="qChoices"></div>
       </div>
@@ -63,8 +70,8 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="js/level.js?v=7"></script>
-<script src="js/entities.js?v=7"></script>
-<script src="js/main.js?v=7"></script>
+<script src="js/level.js?v=8"></script>
+<script src="js/entities.js?v=8"></script>
+<script src="js/main.js?v=8"></script>
 </body>
 </html>

@@ -30,6 +30,7 @@ html, body { margin:0; padding:0; background:#070605; height:100%; font-family:'
 
 /* ---- hud ---- */
 #keyHud { position:absolute; top:10px; left:10px; background:rgba(12,9,5,0.65); color:#ffe28a; padding:5px 10px; border-radius:12px; font-size:13px; font-weight:bold; border:1px solid rgba(255,220,140,0.28); }
+#timerHud { position:absolute; top:11px; left:96px; color:#b9ab84; font-size:12px; font-variant-numeric:tabular-nums; letter-spacing:1px; text-shadow:0 0 8px rgba(0,0,0,0.9); }
 #zoneLabel { position:absolute; top:12px; right:14px; color:#cdbd93; font-size:12px; letter-spacing:3px; opacity:0; text-shadow:0 0 8px rgba(0,0,0,0.9); }
 #zoneLabel.show { animation:zoneFade 3.4s ease-out forwards; }
 @keyframes zoneFade { 0%{opacity:0;} 15%{opacity:0.95;} 70%{opacity:0.85;} 100%{opacity:0;} }
@@ -45,6 +46,13 @@ html, body { margin:0; padding:0; background:#070605; height:100%; font-family:'
 .overlay p.entities { display:flex; flex-direction:column; gap:5px; font-size:12px; color:#a99e80; }
 .overlay p.entities b { color:#e3d4a6; }
 .overlay p.warn { color:#c98a6a; font-size:12px; }
+#resultCard { margin-top:6px; width:100%; max-width:280px; border:1px solid rgba(255,220,140,0.28); border-radius:6px; padding:12px 16px; background:rgba(20,15,8,0.55); }
+.resultRow { display:flex; justify-content:space-between; align-items:baseline; font-size:13px; color:#a99e80; padding:4px 0; }
+.resultRow b { color:#e9dfc4; font-variant-numeric:tabular-nums; }
+.resultRow.big { border-bottom:1px solid rgba(255,220,140,0.18); padding-bottom:8px; margin-bottom:4px; }
+.resultRow.big b { color:#ffe28a; font-size:26px; letter-spacing:1px; }
+#winBest.record { color:#8affa0; }
+
 .btn { margin-top:16px; padding:11px 30px; background:#b0925a; color:#1c160b; border:none; border-radius:5px; font-size:15px; font-weight:bold; cursor:pointer; letter-spacing:1px; }
 .btn:active { background:#8a744a; }
 
@@ -52,7 +60,8 @@ html, body { margin:0; padding:0; background:#070605; height:100%; font-family:'
 #questionModal { position:absolute; inset:0; background:rgba(8,6,3,0.9); display:none; align-items:center; justify-content:center; padding:14px; box-sizing:border-box; }
 #questionCard { background:#e8d8a8; border:4px solid #7a5f2e; border-radius:8px; padding:18px; width:100%; max-width:340px; box-sizing:border-box; box-shadow:0 8px 34px rgba(0,0,0,0.75); }
 #qTitle { color:#5a4520; font-size:12px; font-weight:bold; margin:0 0 8px; letter-spacing:1px; }
-#qText { color:#2a2010; font-size:26px; font-weight:bold; text-align:center; margin:6px 0 16px; }
+/* keep-all stops Korean wrapping mid-word, which long word problems hit a lot */
+#qText { color:#2a2010; font-size:21px; font-weight:bold; text-align:center; margin:6px 0 16px; line-height:1.45; word-break:keep-all; }
 #qChoices { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .qBtn { padding:12px 4px; font-size:18px; font-weight:bold; background:#f4e9c8; border:2px solid #8a744a; border-radius:5px; color:#2a2010; cursor:pointer; }
 .qBtn:active { background:#d8c48a; }

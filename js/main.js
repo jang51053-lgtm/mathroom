@@ -22,9 +22,9 @@
   var STAMINA_RESUME = 25;
 
   // Tight over-the-shoulder rig - the whole point is feeling boxed in.
-  var CAM_DIST = 2.55;
-  var CAM_SHOULDER = 0.48;
-  var CAM_EYE = 1.52;
+  var CAM_DIST = 1.95;
+  var CAM_SHOULDER = 0.42;
+  var CAM_EYE = 1.5;
 
   var TEACHER_PATROL = 2.3;
   var TEACHER_CHASE_BASE = 4.1;
@@ -37,8 +37,8 @@
   var LURKER_CATCH = 0.85;
   var LURKER_WAKE_AT = 1;        // keys collected before it starts hunting
 
-  var WATCHER_FEAR_RATE = 13;
-  var WATCHER_FEAR_DECAY = 15;
+  var WATCHER_FEAR_RATE = 7.5;
+  var WATCHER_FEAR_DECAY = 16;
   var CATCH_RADIUS = 0.95;
 
   var ASSET_PATHS = {
@@ -335,6 +335,8 @@
   var stepTimer = 0;
   var bookPingTimer = 0;
   var doorToastCooldown = 0;
+  var wrongCount = 0;
+  var BEST_TIME_KEY = 'backrooms_best_time';
 
   // =========================================================================
   // HUD
@@ -354,6 +356,23 @@
   var zoneLabel = document.getElementById('zoneLabel');
   var staminaFill = document.getElementById('staminaFill');
   var keyCountEl = document.getElementById('keyCount');
+  var timerEl = document.getElementById('timerHud');
+
+  function formatTime(seconds) {
+    var m = Math.floor(seconds / 60);
+    var s = Math.floor(seconds % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function readBestTime() {
+    try {
+      var raw = window.localStorage.getItem(BEST_TIME_KEY);
+      return raw === null ? null : parseFloat(raw);
+    } catch (e) { return null; }
+  }
+  function writeBestTime(t) {
+    try { window.localStorage.setItem(BEST_TIME_KEY, String(t)); } catch (e) { /* private mode */ }
+  }
 
   // Ramped steeply so low fear is a faint crawl and only the last stretch
   // actually blinds you - a linear ramp made the screen unreadable at 50%.
@@ -384,32 +403,220 @@
   var qChoices = document.getElementById('qChoices');
   var activeBook = null;
 
-  function genQuestion() {
-    var ops = ['+', '-', '×'];
-    var op = ops[Math.floor(Math.random() * ops.length)];
-    var a, b, answer, text;
-    if (op === '+') {
-      a = Math.floor(Math.random() * 40) + 5; b = Math.floor(Math.random() * 40) + 5;
-      answer = a + b; text = a + ' + ' + b;
-    } else if (op === '-') {
-      a = Math.floor(Math.random() * 40) + 15; b = Math.floor(Math.random() * a);
-      answer = a - b; text = a + ' - ' + b;
+  // ---- rounding problems -------------------------------------------------
+  // Six templates, each filled with fresh random numbers, so a run never
+  // repeats the same set twice.
+  var PLACE_NAME = { 1: '일', 10: '십', 100: '백', 1000: '천', 10000: '만' };
+
+  function ri(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+  function fmtInt(n) { return n.toLocaleString('ko-KR'); }
+  function roundUnit(n, unit) { return Math.floor(n / unit + 0.5) * unit; }
+
+  // 을/를 depends on whether the final digit's Korean reading ends in a
+  // consonant: 이·사·오·구 do not, everything else does.
+  function objParticle(numText) {
+    var digits = numText.replace(/[^0-9]/g, '');
+    var last = digits.charAt(digits.length - 1);
+    return '2459'.indexOf(last) >= 0 ? '를' : '을';
+  }
+
+  // Distractors collide with each other often (rounding up and rounding to the
+  // next place can land on the same number), so callers pass a top-up function
+  // that can keep producing fresh ones until there really are four options.
+  function buildChoices(correctLabel, wrongLabels, topUp) {
+    // Dedupe on numeric value, not on the label: "3" and "3.0" are the same
+    // answer wearing different clothes, and shipping both makes a question
+    // that punishes a correct pick.
+    function valueKey(label) {
+      var num = parseFloat(String(label).replace(/[^0-9.\-]/g, ''));
+      return isFinite(num) ? 'v' + num : 's' + label;
+    }
+
+    var seen = {};
+    seen[valueKey(correctLabel)] = true;
+    var list = [{ label: correctLabel, correct: true }];
+
+    function offer(label) {
+      if (label === null || label === undefined) return;
+      label = String(label);
+      if (!label.length) return;
+      var key = valueKey(label);
+      if (seen[key]) return;
+      seen[key] = true;
+      list.push({ label: label, correct: false });
+    }
+
+    for (var i = 0; i < wrongLabels.length && list.length < 4; i++) offer(wrongLabels[i]);
+    for (var n = 1; list.length < 4 && topUp && n < 40; n++) offer(topUp(n));
+
+    for (var j = list.length - 1; j > 0; j--) {
+      var k = Math.floor(Math.random() * (j + 1));
+      var t = list[j]; list[j] = list[k]; list[k] = t;
+    }
+    return list;
+  }
+
+  // Wrong answers must still look like answers: positive, and never the
+  // correct value in disguise.
+  function intLabels(answer, candidates) {
+    var out = [];
+    candidates.forEach(function (v) {
+      if (typeof v !== 'number' || !isFinite(v) || v <= 0 || v === answer) return;
+      out.push(fmtInt(v));
+    });
+    return out;
+  }
+  function intTopUp(answer, unit) {
+    return function (n) {
+      var v = answer + (n % 2 ? 1 : -1) * unit * Math.ceil(n / 2);
+      return v > 0 && v !== answer ? fmtInt(v) : null;
+    };
+  }
+
+  // "3,472를 십의 자리에서 반올림하면?" / "…반올림하여 백의 자리까지 나타내면?"
+  function qIntRound(phrasing) {
+    var unit = [10, 100, 1000][ri(0, 2)];
+    var n;
+    do { n = ri(unit * 2, unit * 95); } while (n % unit === 0);
+    var answer = roundUnit(n, unit);
+    var nText = fmtInt(n);
+    var text = phrasing === 0
+      ? nText + objParticle(nText) + ' ' + PLACE_NAME[unit / 10] + '의 자리에서 반올림하면?'
+      : nText + objParticle(nText) + ' 반올림하여 ' + PLACE_NAME[unit] + '의 자리까지 나타내면?';
+    return {
+      text: text,
+      choices: buildChoices(fmtInt(answer), intLabels(answer, [
+        Math.ceil(n / unit) * unit,
+        Math.floor(n / unit) * unit,
+        roundUnit(n, unit * 10),
+        answer + unit,
+        answer - unit
+      ]), intTopUp(answer, unit))
+    };
+  }
+
+  // Decimals: round to a whole number or to one decimal place.
+  function qDecimalRound() {
+    var deep = Math.random() < 0.5;          // deep = round at the 2nd decimal
+    var n, guard = 0;
+    do {
+      n = ri(105, 990) / 100;                // 1.05 ~ 9.90
+      // A one-decimal answer of "3.0" would make the distractor "3" equally
+      // correct, so keep drawing until the tenths digit is non-zero.
+    } while (deep && Math.floor(n * 10 + 0.5) % 10 === 0 && guard++ < 50);
+    var nText = n.toFixed(2);
+    var answer, answerText, wrongs;
+    if (!deep) {
+      answer = Math.floor(n + 0.5);
+      answerText = String(answer);
+      wrongs = [String(Math.ceil(n)), String(Math.floor(n)),
+                (Math.floor(n * 10 + 0.5) / 10).toFixed(1), String(answer + 1)];
     } else {
-      a = Math.floor(Math.random() * 9) + 2; b = Math.floor(Math.random() * 9) + 2;
-      answer = a * b; text = a + ' × ' + b;
+      answer = Math.floor(n * 10 + 0.5) / 10;
+      answerText = answer.toFixed(1);
+      wrongs = [(Math.ceil(n * 10) / 10).toFixed(1), (Math.floor(n * 10) / 10).toFixed(1),
+                String(Math.floor(n + 0.5)), (answer + 0.1).toFixed(1)];
     }
-    var choices = [answer];
-    while (choices.length < 4) {
-      var delta = Math.floor(Math.random() * 9) - 4;
-      if (delta === 0) delta = 3;
-      var cand = answer + delta;
-      if (cand >= 0 && choices.indexOf(cand) === -1) choices.push(cand);
-    }
-    for (var i = choices.length - 1; i > 0; i--) {
-      var j = Math.floor(Math.random() * (i + 1));
-      var t = choices[i]; choices[i] = choices[j]; choices[j] = t;
-    }
-    return { text: text, answer: answer, choices: choices };
+    return {
+      text: nText + objParticle(nText) + ' 소수 ' + (deep ? '둘째' : '첫째') +
+            ' 자리에서 반올림하면?',
+      choices: buildChoices(answerText, wrongs, function (k) {
+        var stepSize = deep ? 0.1 : 1;
+        var v = answer + (k % 2 ? 1 : -1) * stepSize * Math.ceil(k / 2);
+        if (v <= 0) return null;
+        return deep ? v.toFixed(1) : String(Math.round(v));
+      })
+    };
+  }
+
+  // Same maths wrapped in a word problem.
+  var WORD_CONTEXTS = [
+    { subject: '놀이공원 입장객', unit: '명' },
+    { subject: '상자 안의 사탕', unit: '개' },
+    { subject: '도서관의 책', unit: '권' },
+    { subject: '경기장 관중', unit: '명' },
+    { subject: '학교까지의 거리', unit: 'm' }
+  ];
+  function qWordRound() {
+    var ctx = WORD_CONTEXTS[ri(0, WORD_CONTEXTS.length - 1)];
+    var unit = [100, 1000][ri(0, 1)];
+    var n;
+    do { n = ri(unit * 2, unit * 90); } while (n % unit === 0);
+    var answer = roundUnit(n, unit);
+    return {
+      text: ctx.subject + '가 ' + fmtInt(n) + ctx.unit + '입니다. ' +
+            PLACE_NAME[unit / 10] + '의 자리에서 반올림하면 약 몇 ' + ctx.unit + '일까요?',
+      choices: buildChoices(fmtInt(answer) + ctx.unit,
+        intLabels(answer, [
+          Math.ceil(n / unit) * unit,
+          Math.floor(n / unit) * unit,
+          roundUnit(n, unit * 10),
+          answer + unit
+        ]).map(function (label) { return label + ctx.unit; }),
+        function (k) {
+          var extra = intTopUp(answer, unit)(k);
+          return extra === null ? null : extra + ctx.unit;
+        })
+    };
+  }
+
+  // Reverse: which of these numbers rounds to the given value?
+  function qReverseRound() {
+    var unit = [10, 100][ri(0, 1)];
+    var target = roundUnit(ri(unit * 3, unit * 80), unit);
+    var half = unit / 2;
+    var correct = ri(target - half, target + half - 1);
+    if (correct < 0) correct = target;
+    var wrongs = intLabels(correct, [
+      target - half - ri(1, half - 1),
+      target + half + ri(0, half - 1),
+      target + unit + ri(1, half - 1)
+    ]);
+    return {
+      text: '반올림하여 ' + PLACE_NAME[unit] + '의 자리까지 나타내면 ' +
+            fmtInt(target) + '이 되는 수는?',
+      // Top-ups walk further out of the rounding band so they stay wrong.
+      choices: buildChoices(fmtInt(correct), wrongs, function (k) {
+        var v = target + (k % 2 ? 1 : -1) * (half + unit * Math.ceil(k / 2));
+        return v > 0 ? fmtInt(v) : null;
+      })
+    };
+  }
+
+  // Boundary: smallest / largest natural number that rounds to the target.
+  function qBoundaryRound() {
+    var unit = [10, 100][ri(0, 1)];
+    var target = roundUnit(ri(unit * 3, unit * 60), unit);
+    var wantSmallest = Math.random() < 0.5;
+    var answer = wantSmallest ? target - unit / 2 : target + unit / 2 - 1;
+    return {
+      text: '반올림하여 ' + PLACE_NAME[unit] + '의 자리까지 나타내면 ' + fmtInt(target) +
+            '이 되는 자연수 중 가장 ' + (wantSmallest ? '작은' : '큰') + ' 수는?',
+      choices: buildChoices(fmtInt(answer), intLabels(answer, [
+        wantSmallest ? target - unit / 2 - 1 : target + unit / 2,
+        wantSmallest ? target - unit / 2 + 1 : target + unit / 2 - 2,
+        target,
+        wantSmallest ? target - unit : target + unit
+      ]), intTopUp(answer, 1))
+    };
+  }
+
+  var QUESTION_POOL = [
+    function () { return qIntRound(0); },
+    function () { return qIntRound(1); },
+    qDecimalRound,
+    qWordRound,
+    qReverseRound,
+    qBoundaryRound
+  ];
+
+  function genQuestion() {
+    var make = QUESTION_POOL[Math.floor(Math.random() * QUESTION_POOL.length)];
+    var q = make();
+    // A template can collide on its own distractors; fall back rather than
+    // ever showing a question with fewer than four options.
+    if (q.choices.length < 4) q = qIntRound(0);
+    return q;
   }
 
   function tryOpenBook(book) {
@@ -417,13 +624,13 @@
     if (d > INTERACT_RADIUS) { showToast('책에 더 가까이 다가가세요'); return; }
     activeBook = book;
     var q = genQuestion();
-    qText.textContent = q.text + ' = ?';
+    qText.textContent = q.text;
     qChoices.innerHTML = '';
     q.choices.forEach(function (choice) {
       var btn = document.createElement('button');
       btn.className = 'qBtn';
-      btn.textContent = choice;
-      btn.addEventListener('click', function () { answerQuestion(choice === q.answer); });
+      btn.textContent = choice.label;
+      btn.addEventListener('click', function () { answerQuestion(choice.correct); });
       qChoices.appendChild(btn);
     });
     questionModal.style.display = 'flex';
@@ -445,6 +652,7 @@
       if (keyCount >= KEYS_NEEDED && doorLocked) unlockDoor();
     } else {
       tone(120, 0.35, 'sawtooth', 0.11);
+      wrongCount++;
       teacherPenalty = Math.min(TEACHER_CHASE_CAP - TEACHER_CHASE_BASE, teacherPenalty + TEACHER_CHASE_STEP);
       fear = Math.min(100, fear + 12);
       showToast('오답… 무언가가 더 빨라졌다');
@@ -501,6 +709,7 @@
     var sc = BR.tileCenter(level.spawnTile.tx, level.spawnTile.tz);
     player.position.set(sc.x, 0, sc.z);
     player.rotation.y = 0;
+    player.visible = true;
     curVel = { x: 0, z: 0 };
 
     var hs = level.hunterSpawns;
@@ -526,9 +735,11 @@
 
     keyCount = 0;
     keyCountEl.textContent = 0;
+    wrongCount = 0;
     fear = 0;
     danger = 0;
     elapsed = 0;
+    timerEl.textContent = '0:00';
     stamina = STAMINA_MAX;
     canSprint = true;
     sprintHeld = false;
@@ -693,7 +904,7 @@
     }
     // Tile walls give an exact hit distance, so a single symmetric ease is
     // enough to keep this smooth without the camera ever clipping through.
-    camFrac += (wanted - camFrac) * Math.min(1, dt * 16);
+    camFrac += (wanted - camFrac) * Math.min(1, dt * 20);
 
     var cx = eyeX + (targetX - eyeX) * camFrac;
     var cy = eyeY + (targetY - eyeY) * camFrac;
@@ -702,12 +913,29 @@
     var zoneSpec = BR.ZONES[BR.zoneAtWorld(level, player.position.x, player.position.z)];
     cy = Math.min(cy, zoneSpec.height - 0.3);
 
+    // Last-resort guard: the shoulder offset swings sideways, so in a tight
+    // corner the eased position can still land inside a wall. Reel it in until
+    // it is back in open air.
+    var guard = 0;
+    while (BR.solidAtWorld(level, cx, cz) && guard++ < 8) {
+      cx = eyeX + (cx - eyeX) * 0.65;
+      cz = eyeZ + (cz - eyeZ) * 0.65;
+      cy = eyeY + (cy - eyeY) * 0.65;
+    }
+
     camera.position.set(cx, cy, cz);
     camera.lookAt(
       eyeX + right.x * CAM_SHOULDER * 0.6,
       eyeY - 0.08,
       eyeZ + right.z * CAM_SHOULDER * 0.6
     );
+
+    // Squeezed against a wall the camera ends up inside the player, so drop
+    // the body and let it read as first person until there is room again.
+    // Hysteresis keeps it from strobing at the threshold.
+    var camGap = Math.hypot(cx - eyeX, cz - eyeZ);
+    if (player.visible && camGap < 1.15) player.visible = false;
+    else if (!player.visible && camGap > 1.4) player.visible = true;
   }
 
   // =========================================================================
@@ -960,7 +1188,7 @@
         watcher.visible = false;
         watcherActive = false;
         watcherTimer = 20 + Math.random() * 16;
-        fear = Math.min(100, fear + 22);
+        fear = Math.min(100, fear + 16);
         noise(0.5, 0.2, 0, 1800);
         tone(150, 0.4, 'sawtooth', 0.12);
       }
@@ -998,6 +1226,18 @@
       tone(90, 0.8, 'sawtooth', 0.14);
       noise(1.2, 0.18, 0, 500);
     } else {
+      var best = readBestTime();
+      var isRecord = best === null || elapsed < best;
+      if (isRecord) writeBestTime(elapsed);
+
+      document.getElementById('winTime').textContent = formatTime(elapsed);
+      document.getElementById('winSolved').textContent = keyCount + ' / ' + books.length;
+      document.getElementById('winWrong').textContent = wrongCount + '회';
+      document.getElementById('winBest').textContent = isRecord
+        ? '신기록!'
+        : formatTime(best);
+      document.getElementById('winBest').classList.toggle('record', isRecord);
+
       document.getElementById('winScreen').hidden = false;
       tone(520, 0.14, 'sine', 0.09);
       setTimeout(function () { tone(680, 0.14, 'sine', 0.09); }, 140);
@@ -1159,6 +1399,7 @@
 
     if ((gameState === 'playing' || gameState === 'question') && level) {
       elapsed += dt;
+      timerEl.textContent = formatTime(elapsed);
 
       flowTimer -= dt;
       if (flowTimer <= 0) {
