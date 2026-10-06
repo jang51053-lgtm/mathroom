@@ -67,3 +67,25 @@ html, body { margin:0; padding:0; background:#070605; height:100%; font-family:'
 .qBtn:active { background:#d8c48a; }
 
 [hidden] { display:none !important; }
+
+/* ---- hiding ---- */
+#hideBtn { position:absolute; bottom:20px; right:86px; width:60px; height:60px; border-radius:50%; background:rgba(255,255,255,0.06); border:1px dashed rgba(255,255,255,0.22); touch-action:none; user-select:none; display:flex; align-items:center; justify-content:center; color:rgba(200,180,140,0.45); font-size:12px; font-weight:bold; transition:all 0.15s; }
+#hideBtn.ready { background:rgba(150,105,50,0.55); border:2px solid #e3b56a; color:#fff2d0; box-shadow:0 0 14px rgba(227,181,106,0.55); }
+#hideOverlay { position:absolute; inset:0; pointer-events:none; }
+#hideOverlay .slatTop, #hideOverlay .slatBottom { position:absolute; left:0; right:0; background:repeating-linear-gradient(0deg, #3b2812 0 18px, #2c1d0c 18px 21px); box-shadow:0 0 30px rgba(0,0,0,0.9); }
+#hideOverlay .slatTop { top:0; height:36%; }
+#hideOverlay .slatBottom { bottom:0; height:36%; }
+#hideLabel { position:absolute; top:14%; left:50%; transform:translateX(-50%); color:#e9cf9a; font-size:13px; letter-spacing:2px; }
+#hideBar { position:absolute; bottom:14%; left:50%; transform:translateX(-50%); width:160px; height:7px; background:rgba(0,0,0,0.6); border-radius:4px; overflow:hidden; border:1px solid rgba(255,220,150,0.4); }
+#hideFill { height:100%; width:100%; background:#e3b56a; }
+
+/* ---- answer feedback ---- */
+.qBtn:disabled { cursor:default; opacity:0.55; }
+.qBtn.right { background:#9fe0a0; border-color:#2f8a3a; opacity:1; }
+.qBtn.wrong { background:#f0a39a; border-color:#a0342a; opacity:1; }
+#qFeedback { margin-top:12px; text-align:center; }
+#qVerdict { margin:0 0 6px; font-size:16px; font-weight:bold; }
+#qFeedback.good #qVerdict { color:#1f7a2c; }
+#qFeedback.bad #qVerdict { color:#a0342a; }
+#qExplain { margin:0; font-size:14px; line-height:1.6; color:#3a2c14; white-space:pre-line; word-break:keep-all; background:rgba(255,255,255,0.45); border-radius:5px; padding:8px; }
+#qFeedback .btn { margin-top:10px; padding:8px 26px; }
