@@ -22,9 +22,8 @@
   var STAMINA_RESUME = 25;
 
   // Tight over-the-shoulder rig - the whole point is feeling boxed in.
-  var CAM_DIST = 1.95;
-  var CAM_SHOULDER = 0.42;
-  var CAM_EYE = 1.5;
+  var EYE_HEIGHT = 1.6;          // first-person eye height above the floor
+  var PITCH_LIMIT = 1.25;
 
   var TEACHER_PATROL = 2.3;
   var TEACHER_CHASE_BASE = 4.1;
@@ -201,9 +200,25 @@
     lightPool.push({ light: pl, fixture: null, phase: Math.random() * 6.28 });
   }
 
-  var playerLamp = new THREE.PointLight(0xffe9c4, 0.55, 7.5);
+  // A faint glow around you so a flashlight-off room is dark, not black.
+  var playerLamp = new THREE.PointLight(0xffe9c4, 0.22, 5);
   playerLamp.position.set(0, 1.7, 0);
   scene.add(playerLamp);
+
+  // Flashlight: a spotlight riding on the camera, aimed where you look.
+  scene.add(camera);
+  var FLASH_INTENSITY = 2.4;
+  var flashlight = new THREE.SpotLight(0xfff1d2, FLASH_INTENSITY, 26, 0.42, 0.45, 1.3);
+  flashlight.position.set(0.18, -0.16, 0.05);
+  camera.add(flashlight);
+  camera.add(flashlight.target);
+  flashlight.target.position.set(0.05, -0.12, -6);
+  // Soft fill from the same spot so the lit area doesn't look like a hard disc.
+  var flashFill = new THREE.PointLight(0xfff1d2, 0.35, 4.5);
+  flashFill.position.set(0, 0, -1.2);
+  camera.add(flashFill);
+  var flashOn = true;
+  var flashFlicker = 0;
 
   // =========================================================================
   // ASSETS (optional .glb, otherwise procedural placeholders)
@@ -273,7 +288,7 @@
   player.add(BR.createPlayerPlaceholder());
   scene.add(player);
   var playerAnim = {};
-  tryAttachModel(player, ASSET_PATHS.player, ASSET_TUNING.player, playerAnim);
+  player.visible = false;   // first person - the body is never drawn
 
   var teacher = new THREE.Group();
   teacher.add(BR.createTeacherPlaceholder());
@@ -315,7 +330,8 @@
   var canSprint = true;
   var sprintHeld = false;
 
-  var orbitYaw = Math.PI, orbitPitch = 0.22;
+  var orbitYaw = Math.PI, orbitPitch = 0;   // pitch > 0 looks down
+  var bobPhase = 0, bobLevel = 0;
   var camFrac = 1;
 
   var playerFlow = null;
@@ -570,7 +586,7 @@
     teacherSpotted = false;
     hideOverlay.hidden = true;
     player.rotation.y = 0;
-    player.visible = true;
+    player.visible = false;          // first person: no body on screen
     curVel = { x: 0, z: 0 };
 
     var hs = level.hunterSpawns;
@@ -605,7 +621,9 @@
     canSprint = true;
     sprintHeld = false;
     orbitYaw = Math.PI;
-    orbitPitch = 0.22;
+    orbitPitch = 0;
+    bobPhase = 0; bobLevel = 0;
+    setFlashlight(true);
     camFrac = 1;
     playerFlow = null;
     flowTimer = 0;
@@ -677,7 +695,6 @@
     teacherSpotted = false;
     hideCooldown = HIDE_COOLDOWN;
     hideOverlay.hidden = true;
-    player.visible = true;
     noise(0.2, 0.06, 0, 500);
     if (msg) showToast(msg, 1800);
   }
@@ -705,6 +722,35 @@
   }
 
   hideBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); toggleHide(); });
+
+  // =========================================================================
+  // FLASHLIGHT
+  // =========================================================================
+  var lightBtn = document.getElementById('lightBtn');
+  function setFlashlight(on) {
+    flashOn = on;
+    lightBtn.classList.toggle('on', on);
+    lightBtn.textContent = on ? '손전등 ON' : '손전등 OFF';
+  }
+  function toggleFlashlight() {
+    if (gameState !== 'playing') return;
+    setFlashlight(!flashOn);
+    tone(flashOn ? 1900 : 1400, 0.04, 'square', 0.03);   // switch click
+  }
+  lightBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); toggleFlashlight(); });
+
+  // Close to danger the bulb stutters - you never quite trust it.
+  function updateFlashlight(dt) {
+    var target = 0;
+    if (flashOn) {
+      target = FLASH_INTENSITY;
+      flashFlicker -= dt;
+      if (flashFlicker <= 0 && danger > 0.55 && Math.random() < dt * 4 * danger) flashFlicker = 0.06 + Math.random() * 0.12;
+      if (flashFlicker > 0) target *= 0.15;
+    }
+    flashlight.intensity += (target - flashlight.intensity) * Math.min(1, dt * 25);
+    flashFill.intensity = flashlight.intensity * 0.15;
+  }
 
   // =========================================================================
   // INPUT
@@ -738,7 +784,7 @@
     var dx = e.clientX - lastX, dy = e.clientY - lastY;
     lastX = e.clientX; lastY = e.clientY;
     orbitYaw -= dx * LOOK_SENS;
-    orbitPitch = clamp(orbitPitch - dy * LOOK_SENS, -0.15, 0.62);
+    orbitPitch = clamp(orbitPitch + dy * LOOK_SENS, -PITCH_LIMIT, PITCH_LIMIT);
   });
   function endLook(e) {
     if (e.pointerId === lookId) lookId = null;
@@ -818,6 +864,7 @@
     keys[e.key.toLowerCase()] = true;
     if (e.key.toLowerCase() === 'e' && gameState === 'playing') interactNearest();
     if ((e.key.toLowerCase() === 'q' || e.key === ' ') && !e.repeat) { e.preventDefault(); toggleHide(); }
+    if (e.key.toLowerCase() === 'f' && !e.repeat) toggleFlashlight();
   });
   window.addEventListener('keyup', function (e) { keys[e.key.toLowerCase()] = false; });
 
@@ -825,65 +872,29 @@
   // CAMERA
   // =========================================================================
   function updateCamera(dt) {
+    var cp = Math.cos(orbitPitch), sp = Math.sin(orbitPitch);
     if (hidden && hideCrate) {
       // Peeking out through the gap in the crate.
       var hy = 1.15;
       camera.position.set(hideCrate.x, hy, hideCrate.z);
-      camera.lookAt(hideCrate.x - Math.sin(orbitYaw), hy - Math.sin(orbitPitch) * 0.6, hideCrate.z - Math.cos(orbitYaw));
+      camera.lookAt(hideCrate.x - Math.sin(orbitYaw) * cp, hy - sp, hideCrate.z - Math.cos(orbitYaw) * cp);
       return;
     }
     camGround += (player.position.y - camGround) * Math.min(1, dt * 10);
-    var eyeX = player.position.x, eyeY = camGround + CAM_EYE, eyeZ = player.position.z;
-    var right = { x: Math.cos(orbitYaw), z: -Math.sin(orbitYaw) };
-    var back = { x: Math.sin(orbitYaw) * Math.cos(orbitPitch), z: Math.cos(orbitYaw) * Math.cos(orbitPitch) };
 
-    var targetX = eyeX + back.x * CAM_DIST + right.x * CAM_SHOULDER;
-    var targetZ = eyeZ + back.z * CAM_DIST + right.z * CAM_SHOULDER;
-    var targetY = eyeY + Math.sin(orbitPitch) * CAM_DIST;
-
-    var dx = targetX - eyeX, dz = targetZ - eyeZ;
-    var horiz = Math.hypot(dx, dz);
-    var wanted = 1;
-    if (horiz > 0.001) {
-      var hit = BR.rayDistance(level, eyeX, eyeZ, dx, dz, horiz + 0.4);
-      var allowed = Math.min(horiz, Math.max(0.3, hit - 0.32));
-      wanted = allowed / horiz;
-    }
-    // Tile walls give an exact hit distance, so a single symmetric ease is
-    // enough to keep this smooth without the camera ever clipping through.
-    camFrac += (wanted - camFrac) * Math.min(1, dt * 20);
-
-    var cx = eyeX + (targetX - eyeX) * camFrac;
-    var cy = eyeY + (targetY - eyeY) * camFrac;
-    var cz = eyeZ + (targetZ - eyeZ) * camFrac;
+    // Head bob scales with walking speed so standing still is perfectly calm.
+    var speed = Math.hypot(curVel.x, curVel.z);
+    bobPhase += dt * speed * 1.9;
+    var bobAmt = Math.min(1, speed / WALK_SPEED) * 0.05;
+    bobLevel += (bobAmt - bobLevel) * Math.min(1, dt * 8);
 
     var zoneSpec = BR.ZONES[BR.zoneAtWorld(level, player.position.x, player.position.z)];
-    cy = Math.min(cy, zoneSpec.height - 0.3);
-    cy = Math.max(cy, BR.groundAt(level, cx, cz) + 0.4);
+    var eyeY = Math.min(camGround + EYE_HEIGHT + Math.sin(bobPhase * 2) * bobLevel, zoneSpec.height - 0.25);
+    var eyeX = player.position.x + Math.cos(orbitYaw) * Math.sin(bobPhase) * bobLevel * 0.6;
+    var eyeZ = player.position.z - Math.sin(orbitYaw) * Math.sin(bobPhase) * bobLevel * 0.6;
 
-    // Last-resort guard: the shoulder offset swings sideways, so in a tight
-    // corner the eased position can still land inside a wall. Reel it in until
-    // it is back in open air.
-    var guard = 0;
-    while (BR.solidAtWorld(level, cx, cz) && guard++ < 8) {
-      cx = eyeX + (cx - eyeX) * 0.65;
-      cz = eyeZ + (cz - eyeZ) * 0.65;
-      cy = eyeY + (cy - eyeY) * 0.65;
-    }
-
-    camera.position.set(cx, cy, cz);
-    camera.lookAt(
-      eyeX + right.x * CAM_SHOULDER * 0.6,
-      eyeY - 0.08,
-      eyeZ + right.z * CAM_SHOULDER * 0.6
-    );
-
-    // Squeezed against a wall the camera ends up inside the player, so drop
-    // the body and let it read as first person until there is room again.
-    // Hysteresis keeps it from strobing at the threshold.
-    var camGap = Math.hypot(cx - eyeX, cz - eyeZ);
-    if (player.visible && camGap < 1.15) player.visible = false;
-    else if (!player.visible && camGap > 1.4) player.visible = true;
+    camera.position.set(eyeX, eyeY, eyeZ);
+    camera.lookAt(eyeX - Math.sin(orbitYaw) * cp, eyeY - sp, eyeZ - Math.cos(orbitYaw) * cp);
   }
 
   // =========================================================================
@@ -1380,6 +1391,7 @@
       updateWatcher(dt);
       updateTension(dt);
       updateLights(dt);
+      updateFlashlight(dt);
       updateAtmosphere(dt);
       updateCamera(dt);
     }
