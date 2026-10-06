@@ -4,11 +4,11 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>백룸 수학 탈출</title>
-<link rel="stylesheet" href="css/style.css?v=8" />
+<link rel="stylesheet" href="css/style.css?v=9" />
 </head>
 <body>
 <div id="container">
-  <div id="hint">왼쪽 조이스틱 이동 · 화면 드래그 시점 · 오른쪽 버튼 달리기 · 책을 탭해 문제풀이</div>
+  <div id="hint">왼쪽 조이스틱 이동 · 화면 드래그 시점 · 달리기(Shift) · 숨기(Q/스페이스) · 책을 탭해 문제풀이(E)</div>
   <div id="sceneWrap">
     <div id="threeContainer"></div>
 
@@ -23,6 +23,13 @@
     <div id="joystick"><div id="stick"></div></div>
     <div id="staminaWrap"><div id="staminaFill"></div></div>
     <div id="runBtn">달리기</div>
+    <div id="hideBtn">숨기</div>
+
+    <div id="hideOverlay" hidden>
+      <div class="slatTop"></div><div class="slatBottom"></div>
+      <div id="hideLabel">상자 속 · 숨 참는 중</div>
+      <div id="hideBar"><div id="hideFill"></div></div>
+    </div>
 
     <div id="startScreen" class="overlay">
       <h1>백룸 수학 탈출</h1>
@@ -35,6 +42,11 @@
         <span><b>선생님</b> — 복도를 순찰하다 당신을 보면 쫓아옵니다. 문제를 틀릴수록 빨라집니다.</span>
         <span><b>그것</b> — 당신이 <b>보고 있지 않을 때만</b> 다가옵니다. 가끔 뒤를 돌아보세요.</span>
         <span><b>응시자</b> — 멀리 서서 바라봅니다. <b>쳐다볼수록</b> 공포가 차오르니 시선을 돌리세요.</span>
+      </p>
+      <p class="entities">
+        <span><b>계단 홀</b> — 높은 층으로 올라가야 하는 책이 있습니다. 노란 줄 계단을 찾으세요.</span>
+        <span><b>나무 상자</b> — 가까이 가면 <b>숨기</b> 버튼이 켜집니다. 8초까지 숨을 수 있지만, 쫓기다 코앞에서 숨으면 들킵니다.</span>
+        <span><b>탈출문</b> — 매번 다른 곳에 생깁니다.</span>
       </p>
       <p class="warn">지도는 없습니다. 바닥의 화살표와 소리에 의지하세요.</p>
       <button class="btn" id="startBtn">들어가기</button>
@@ -63,6 +75,11 @@
         <p id="qTitle">반올림 문제</p>
         <p id="qText">?</p>
         <div id="qChoices"></div>
+        <div id="qFeedback" hidden>
+          <p id="qVerdict"></p>
+          <p id="qExplain"></p>
+          <button class="btn" id="qOkBtn">확인</button>
+        </div>
       </div>
     </div>
   </div>
@@ -70,8 +87,9 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="js/level.js?v=8"></script>
-<script src="js/entities.js?v=8"></script>
-<script src="js/main.js?v=8"></script>
+<script src="js/questions.js?v=9"></script>
+<script src="js/level.js?v=9"></script>
+<script src="js/entities.js?v=9"></script>
+<script src="js/main.js?v=9"></script>
 </body>
 </html>
